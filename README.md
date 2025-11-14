@@ -1,6 +1,6 @@
 # ADK Agent-to-Agent Development
 
-A working example of Google ADK agent-to-agent communication. See `A2A_OVERVIEW.md` for conceptual background.
+A working example of Google ADK agent-to-agent communication and MCP integration. See `A2A_OVERVIEW.md` for A2A concepts and `MCP_INTEGRATION.md` for MCP server integration.
 
 ## Project Structure
 
@@ -10,7 +10,9 @@ agent/
    weather_agent_gemini.py    # Weather lookup sub-agent
    maths_agent.py             # Math sub-agent
    call_agent.py              # Agent invocation utilities
-main.py                       # Entry point - runs server & client
+mcp_server_remote/
+   mcp_server.py              # MCP server with user management tools
+main.py                       # Entry point - runs servers & client
 ```
 
 ## Setup
@@ -29,12 +31,14 @@ main.py                       # Entry point - runs server & client
 ## How It Works
 
 - **Port 8001**: Root agent HTTP server (weather + math tools)
-- **Client**: Orchestrator agent using RemoteA2aAgent to call the server
+- **Port 8002**: MCP server (user management tools)
+- **Client**: Orchestrator agent using RemoteA2aAgent + MCPToolset
 - **Agent Card**: `http://localhost:8001/.well-known/agent-card.json`
 
 Supported queries:
 - Weather: London, New York, Tokyo (Paris fails intentionally)
 - Math: Sum operations
+- User management: Create, get, delete users via MCP tools
 
 ## Development
 
