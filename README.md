@@ -1,6 +1,12 @@
 # ADK Agent-to-Agent Development
 
-A working example of Google ADK agent-to-agent communication and MCP integration. See `A2A_OVERVIEW.md` for A2A concepts and `MCP_INTEGRATION.md` for MCP server integration.
+A working example of Google ADK agent-to-agent communication and MCP integration with OAuth authentication.
+
+## Documentation
+
+- `A2A_OVERVIEW.md` - Agent-to-Agent concepts and patterns
+- `MCP_INTEGRATION.md` - MCP server integration guide
+- `docs/MCP_OAuth_Authentication.md` - OAuth authentication implementation with MCP servers
 
 ## Project Structure
 
@@ -31,7 +37,8 @@ main.py                       # Entry point - runs servers & client
 ## How It Works
 
 - **Port 8001**: Root agent HTTP server (weather + math tools)
-- **Port 8002**: MCP server (user management tools)
+- **Port 8002**: MCP server (user management tools) with OAuth authentication
+- **Port 8003**: OAuth mock server (token issuance and introspection)
 - **Client**: Orchestrator agent using RemoteA2aAgent + MCPToolset
 - **Agent Card**: `http://localhost:8001/.well-known/agent-card.json`
 

@@ -1,5 +1,6 @@
 import os
 from google.adk.agents import Agent
+from .config import getModel
 
 
 import warnings
@@ -10,8 +11,6 @@ import logging
 logging.basicConfig(level=logging.ERROR)
 
 os.environ["GOOGLE_API_KEY"] = os.environ['GEMINI_API_KEY']
-
-MODEL_GEMINI_2_5_FLASH = "gemini-2.5-flash"
 APP_NAME = "weather_tutorial_app"
 USER_ID = "user_1"
 SESSION_ID = "session_001"
@@ -46,11 +45,9 @@ def get_weather(city: str) -> dict:
 
 
 def getWeatherAgent():
-    AGENT_MODEL = MODEL_GEMINI_2_5_FLASH
-
     weather_agent = Agent(
         name="weather_agent_v1",
-        model=AGENT_MODEL,
+        model=getModel(),
         description="Provides weather information for specific cities.",
         instruction="You are a helpful weather assistant. "
                     "When the user asks for the weather in a specific city, "

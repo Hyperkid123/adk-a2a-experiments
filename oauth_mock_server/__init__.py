@@ -1,0 +1,1 @@
+# OAuth Mock Server for MCP Authentication Testing

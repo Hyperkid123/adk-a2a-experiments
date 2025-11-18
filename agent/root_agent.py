@@ -4,6 +4,7 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 from agent.weather_agent_gemini import getWeatherAgent
 from agent.maths_agent import getMathsAgent
+from agent.config import getModel
 from google.genai import types
 
 
@@ -15,18 +16,14 @@ import logging
 logging.basicConfig(level=logging.ERROR)
 
 os.environ["GOOGLE_API_KEY"] = os.environ['GEMINI_API_KEY']
-
-MODEL_GEMINI_2_5_FLASH = "gemini-2.5-flash"
-APP_NAME = "root_tutorial_app"
+APP_NAME = "orchestrator_app"  # Match the app name used in main.py
 USER_ID = "user_1"
 SESSION_ID = "session_001"
 
 def getRootAgent():
-    AGENT_MODEL = MODEL_GEMINI_2_5_FLASH
-
     root_agent = Agent(
         name="root_agent",
-        model=AGENT_MODEL,
+        model=getModel(),
         description="A root agent that distributes and delegates weather and maths requests to sub-agents.",
         instruction="You are a helpful root assistant. "
                     "Use the available sub-agents to execute weather and maths requests. "
