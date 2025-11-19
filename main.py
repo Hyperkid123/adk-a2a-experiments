@@ -1,8 +1,9 @@
-from agent.root_agent import getRunner, USER_ID, SESSION_ID, getRootAgent
+from agent.root_agent import USER_ID, SESSION_ID, getRootAgent
 from agent.call_agent import callAgentAsync
 from agent.config import getModel
+from fastapi import Request
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
-from google.adk.agents.remote_a2a_agent import AGENT_CARD_WELL_KNOWN_PATH, RemoteA2aAgent
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools.mcp_tool import MCPToolset, StreamableHTTPConnectionParams
 from google.genai import types
@@ -11,6 +12,10 @@ from google.adk.runners import Runner
 from mcp_server_remote.mcp_server import mcp
 from oauth_mock_server.server import run_oauth_server_async
 from oauth_client import OAuthClient
+import httpx
+from a2a.client import ClientFactory, ClientConfig
+from a2a.types import TransportProtocol
+from agent.auth_context import user_auth_token
 
 
 
@@ -18,15 +23,26 @@ import asyncio
 import signal
 import uvicorn
 
-initial_state = {
-    "multiply_enabled": False
-}
+def authenticated_client_factory(token: str):
+    return ClientFactory(
+        ClientConfig(
+            supported_transports=[TransportProtocol.http_json, TransportProtocol.jsonrpc],
+            use_client_preference=True,
+            # Inject the Authorization header here
+            httpx_client=httpx.AsyncClient(
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30.0
+            )
+        )
+    )
 
 async def create_remote_agent_runner(token: str = ""):
     weather_agent = RemoteA2aAgent(
         name="remote_weather_agent",
         description="A remote agent that provides weather information and sum operation.",
-        agent_card="http://localhost:8001/.well-known/agent-card.json"
+        agent_card="http://localhost:8001/.well-known/agent-card.json",
+        # should patch the HTTP protocol to include the OAuth token
+        a2a_client_factory=authenticated_client_factory(token)
     )
 
     # MCP server over networks
@@ -57,12 +73,23 @@ async def create_remote_agent_runner(token: str = ""):
         ])
     )
 
+    # Create session state with OAuth credentials for ADK tools
+    session_state = {
+        "multiply_enabled": False,
+        "sum_tool_key": {
+            "access_token": token,
+            "token_type": "Bearer",
+            "client_id": "test-client",  # Should match your OAuth client
+            "type": "authorized_user"
+        } if token else None
+    }
+
     session_service = InMemorySessionService()
     session = await session_service.create_session(
         app_name="orchestrator_app",
         user_id=USER_ID,
         session_id=SESSION_ID,
-        state=initial_state
+        state=session_state
     )
     retrieved_session = await session_service.get_session(
         app_name="orchestrator_app",
@@ -78,52 +105,56 @@ async def create_remote_agent_runner(token: str = ""):
 
 
 async def run_conversation(runner):
-    response, tool_results = await callAgentAsync("What is the weather like in London?",
-                                       runner=runner,
-                                       user_id=USER_ID,
-                                       session_id=SESSION_ID)
+    try:
+        print("Starting conversation with orchestrator agent...")
+        response, tool_results = await callAgentAsync("What is the weather like in London?",
+                                        runner=runner,
+                                        user_id=USER_ID,
+                                        session_id=SESSION_ID)
 
-    response, tool_results = await callAgentAsync("How about Paris?",
-                                       runner=runner,
-                                       user_id=USER_ID,
-                                       session_id=SESSION_ID) # Expecting the tool's error message
+        response, tool_results = await callAgentAsync("How about Paris?",
+                                        runner=runner,
+                                        user_id=USER_ID,
+                                        session_id=SESSION_ID) # Expecting the tool's error message
 
-    response, tool_results = await callAgentAsync("Tell me the weather in New York",
-                                       runner=runner,
-                                       user_id=USER_ID,
-                                       session_id=SESSION_ID)
+        response, tool_results = await callAgentAsync("Tell me the weather in New York",
+                                        runner=runner,
+                                        user_id=USER_ID,
+                                        session_id=SESSION_ID)
 
-    response, tool_results = await callAgentAsync("Tell me the what is the sum of 15 and 27?",
-                                       runner=runner,
-                                       user_id=USER_ID,
-                                       session_id=SESSION_ID)
+        response, tool_results = await callAgentAsync("Tell me the what is the sum of 15 and 27?",
+                                        runner=runner,
+                                        user_id=USER_ID,
+                                        session_id=SESSION_ID)
 
-    # Create user and capture the result
-    response, tool_results = await callAgentAsync("Create my user account",
-                                       runner=runner,
-                                       user_id=USER_ID,
-                                       session_id=SESSION_ID)
+        # Create user and capture the result
+        response, tool_results = await callAgentAsync("Create my user account",
+                                        runner=runner,
+                                        user_id=USER_ID,
+                                        session_id=SESSION_ID)
 
-    # Extract username from create_user tool result
-    created_username = None
-    for tool_result in tool_results:
-        if tool_result['tool_name'] == 'create_user' and tool_result['result']:
-            try:
-                result = tool_result['result']
-                if isinstance(result, dict) and result.get('success') and 'user' in result:
-                    created_username = result['user']['username']
-                    break
-            except Exception as e:
-                print(f"⚠️ Error extracting username: {e}")
+        # Extract username from create_user tool result
+        created_username = None
+        for tool_result in tool_results:
+            if tool_result['tool_name'] == 'create_user' and tool_result['result']:
+                try:
+                    result = tool_result['result']
+                    if isinstance(result, dict) and result.get('success') and 'user' in result:
+                        created_username = result['user']['username']
+                        break
+                except Exception as e:
+                    print(f"⚠️ Error extracting username: {e}")
 
-    # Use the extracted username in the next call
-    if created_username:
-        response, tool_results = await callAgentAsync(f"Get details of user {created_username}",
-                                           runner=runner,
-                                           user_id=USER_ID,
-                                           session_id=SESSION_ID)
-    else:
-        print("Could not extract username from create_user result, skipping get_user call")
+        # Use the extracted username in the next call
+        if created_username:
+            response, tool_results = await callAgentAsync(f"Get details of user {created_username}",
+                                            runner=runner,
+                                            user_id=USER_ID,
+                                            session_id=SESSION_ID)
+        else:
+            print("Could not extract username from create_user result, skipping get_user call")
+    except Exception as e:
+        print(f"❌ Error during conversation: {e}")
 
 # Global variables for graceful shutdown (recommended pattern from Stack Overflow)
 shutdown_event = None
@@ -147,10 +178,58 @@ def signal_handler(signum, frame):
         # Use run_coroutine_threadsafe for cross-thread safety
         asyncio.run_coroutine_threadsafe(graceful_shutdown(), loop)
 
+
+# Create remote agent app with OAuth middleware
+app1 = to_a2a(getRootAgent(), port=8001)
+
+@app1.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # A. Extract Header
+    auth_header = request.headers.get("Authorization")
+    
+    # B. Set ContextVar (and keep the reset token)
+    token_reset_token = None
+    if auth_header:
+        # Strip "Bearer " if necessary, or pass raw
+        token_val = auth_header.replace("Bearer ", "").strip()
+        token_reset_token = user_auth_token.set(token_val)
+    
+    try:
+        # C. Process Request (Agent runs here)
+        response = await call_next(request)
+        return response
+    finally:
+        # D. Cleanup (Critical for async hygiene)
+        if token_reset_token:
+            user_auth_token.reset(token_reset_token)
+
+# Add middleware to extract OAuth token and inject into agent session
+@app1.middleware("http")
+async def extract_oauth_middleware(request, call_next):
+    # Extract Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]  # Remove "Bearer " prefix
+        # Store token in request state for agent to access
+        request.state.oauth_token = token
+        print(f"🔑 Extracted OAuth token from remote agent request: {token[:20]}...")
+
+        # TODO: Inject token into agent session state for tools to access
+        # This is where we'd need to access the agent's session and update it
+        # For now, we'll rely on the tool context approach
+
+    else:
+        request.state.oauth_token = None
+
+    response = await call_next(request)
+    return response
+
+
 async def run_servers():
     global shutdown_event, running_tasks
 
-    app1 = to_a2a(getRootAgent(), port=8001)
+
+
     server1 = uvicorn.Server(uvicorn.Config(app1, host="127.0.0.1", port=8001))
 
     # Create shutdown event
@@ -161,24 +240,27 @@ async def run_servers():
         signal.signal(sig, signal_handler)
 
     async def delayed_conversation():
-        print("Waiting 5 seconds for the server to start...")
-        await asyncio.sleep(5)
-        print("🔑 Getting OAuth token...")
+        try:
+            print("Waiting 5 seconds for the server to start...")
+            await asyncio.sleep(5)
+            print("🔑 Getting OAuth token...")
 
-        # Get OAuth token through complete flow
-        oauth_client = OAuthClient()
-        token = await oauth_client.get_oauth_flow_token()
-        if not token:
-            print("❌ Failed to get OAuth token - running without authentication")
-            token = ""
+            # Get OAuth token through complete flow
+            oauth_client = OAuthClient()
+            token = await oauth_client.get_oauth_flow_token()
+            if not token:
+                print("❌ Failed to get OAuth token - running without authentication")
+                token = ""
 
-        print("🤖 Creating agent runner with OAuth token...")
-        runner = await create_remote_agent_runner(token)
+            print("🤖 Creating agent runner with OAuth token...")
+            runner = await create_remote_agent_runner(token)
 
-        print("Starting conversation with orchestrator agent...")
-        await run_conversation(runner)
-        print("Conversation completed. Servers will continue running...")
-        print("Press Ctrl+C to exit")
+            print("Starting conversation with orchestrator agent...")
+            await run_conversation(runner)
+            print("Conversation completed. Servers will continue running...")
+            print("Press Ctrl+C to exit")
+        except Exception as e:
+            print(f"❌ Error during conversation: {e}")
 
     # Start servers and track tasks
     print("Starting MCP server on port 8002...")
