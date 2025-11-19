@@ -60,9 +60,6 @@ class IntrospectionTokenVerifier(TokenVerifier):
                 if "scope" in introspection_data and introspection_data["scope"]:
                     scopes = introspection_data["scope"].split()
 
-                print(f"Token introspection data: {introspection_data}")
-                print(f"Token scopes: {scopes}")
-
                 # Create an extended AccessToken with user information
                 return ExtendedAccessToken(
                     token=token,

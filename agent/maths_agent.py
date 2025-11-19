@@ -3,6 +3,7 @@ import json
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from .auth_context import user_auth_token
+from .token_decoder import get_current_user
 
 from google.adk.agents import Agent
 from google.adk.tools.tool_context import ToolContext
@@ -14,7 +15,7 @@ APP_NAME = "maths_tutorial_app"
 USER_ID = "user_2"
 SESSION_ID = "session_002"
 
-def sum(a: int, b: int, tool_context: ToolContext) -> int:
+async def sum(a: int, b: int, tool_context: ToolContext) -> int:
     """Returns the sum of two integers.
 
     Args:
@@ -24,29 +25,19 @@ def sum(a: int, b: int, tool_context: ToolContext) -> int:
     Returns:
         int: The sum of the two integers.
     """
-    token = user_auth_token.get()
-    print(f"Auth token in tool context: {token}")
+    # Decode the current OAuth token to get user information
+    try:
+        user_info = await get_current_user()
+        if user_info:
+            print(f"Authenticated user: {user_info.username} ({user_info.email})")
+            print(f"User scopes: {user_info.scopes}")
+        else:
+            print("No authenticated user or invalid token")
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        user_info = None
 
-    TOKEN_CACHE_KEY = "sum_tool_key"
-    SCOPES = ["user"]
-
-    creds = None
-    cached_token_info = tool_context.state.get(TOKEN_CACHE_KEY)
-    if cached_token_info:
-        try:
-            creds = Credentials.from_authorized_user_info(cached_token_info, SCOPES)
-            if not creds.valid and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                tool_context.state[TOKEN_CACHE_KEY] = json.loads(creds.to_json()) # Update cache
-            elif not creds.valid:
-                creds = None # Invalid, needs re-auth
-                tool_context.state[TOKEN_CACHE_KEY] = None
-        except Exception as e:
-            print(f"Error loading/refreshing cached creds: {e}")
-            creds = None
-            tool_context.state[TOKEN_CACHE_KEY] = None
-    print(f"Credentials before auth flow: {creds}")
-    print(f"--- Tool: sum called with a={a}, b={b} ---") # Log tool execution
+    print(f"--- Tool: sum called with a={a}, b={b}, for user {user_info.username if user_info else 'unknown'} ---")
     return a + b
 
 def multiply(a: int, b: int, tool_context: ToolContext) -> int | dict:
